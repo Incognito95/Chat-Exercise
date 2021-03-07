@@ -1,6 +1,8 @@
 package server;
 
 
+import com.google.gson.internal.bind.util.ISO8601Utils;
+
 import java.awt.*;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -76,29 +78,24 @@ public class ChatServer implements Runnable {
                     default:
                         throw new IllegalArgumentException("Sent request does not obey the protocal");
                 }
+            }else if (parts.length==3) {
+                String token1 = parts[0];//Indeholder eksempelvis CONECT
+                String param = parts[1];//Værdi efter #-tegne
+                String param1 = parts[2];//Værdi efter 2. #-tegne
+                switch (token1) {
+                    case "SEND":
+                        String username = users.get(param);
+                        if (username == null) { // if user not found send CLOSE#2 and close connection
+                            username = "Der findes ikke en bruger ved det navn";
+                        }
+                        pw.println(param1);
+                        break;
+                }
             }
 
             return true;
 
         }
-
-//
-//        public void send(String message, PrintWriter pw) {
-//            String[] parts = message.split("#");
-//            System.out.println("Size: " + parts.length);
-//            String send = parts[0];
-//            String param = parts[1];//Værdi efter #-tegne
-//
-//            switch (send) {
-//                case "SEND":
-//                    System.out.println("hej");
-//                    pw.println(param.toUpperCase());
-//                    break;
-//
-//                default:
-//                    throw new IllegalArgumentException("Sent request does not obey the protocal");
-//            }
-//        }
 
 
         private void handleClient() throws IOException {
@@ -172,20 +169,6 @@ class EchoServerMultithreaded {
     //Call server with arguments like this: 0.0.0.0 8088 logfile.log
     public static void main(String[] args) throws IOException {
         int port = DEFAULT_PORT;
-//        String ip = "localhost";
-//        int port = 8088;
-//        String logFile = "log.txt";  //Do we need this
-//
-//        try {
-//            if (args.length == 3) {
-//                ip = args[0];
-//                port = Integer.parseInt(args[1]);
-//                logFile = args[2];
-//            }
-//        } catch (NumberFormatException ne) {
-//            System.out.println("Illegal inputs provided when starting the server!");
-//            return;
-//        }
         if (args.length == 1) {
             try {
                 port = Integer.parseInt(args[0]);
