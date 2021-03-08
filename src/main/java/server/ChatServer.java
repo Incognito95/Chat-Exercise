@@ -1,30 +1,28 @@
 package server;
 
 
-import com.google.gson.internal.bind.util.ISO8601Utils;
-
-import java.awt.*;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.UnknownHostException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Scanner;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 
 public class ChatServer implements Runnable {
 
     public static Map<String, String> users;
+    public Object sendMessageOnline;
     private EchoServerMultithreaded echoServerMain;
     private PrintWriter pw;
     Socket socket;
     //Provides each instance with a unique id. Simulates the unique userid we will need for the chat-server
     private static int id = 0;
+    private String userName;
+
+    public String getUserName() {
+        return userName;
+    }
 
     static {
         users = new HashMap<>();
@@ -46,7 +44,12 @@ public class ChatServer implements Runnable {
         pw.println("MSG_ALL#" + msg);
     }
 
+    void sendMessageOnline(String msg){
+        pw.println("" + msg );
+    }
+
         private boolean handleCommand(String message, PrintWriter pw) {
+     //   ArrayList<String> onlineUser = new ArrayList<String>();
             String[] parts = message.split("#");
             System.out.println("Size: " + parts.length);
             if (parts.length == 1) {
@@ -61,12 +64,13 @@ public class ChatServer implements Runnable {
 
                 switch (token) {
                     case "CONNECT":
-                        String username = users.get(param);
-                        if (username == null) { // if user not found send CLOSE#2 and close connection
-                            username = "Der findes ikke en bruger ved det navn";
+                       userName = param;
+                        echoServerMain.addToClientHandler(userName,this);
+                        if (userName == null) { // if user not found send CLOSE#2 and close connection
+                            userName = "Der findes ikke en bruger ved det navn";
                         }
-                        pw.println(username);
-                       // send(message, pw);
+                         echoServerMain.sendOnlineUsers();
+
                         break;
                     case "UPPER":
                         pw.println(param.toUpperCase());
@@ -92,11 +96,8 @@ public class ChatServer implements Runnable {
                         break;
                 }
             }
-
             return true;
-
         }
-
 
         private void handleClient() throws IOException {
             pw = new PrintWriter(socket.getOutputStream(), true);
@@ -131,13 +132,27 @@ public class ChatServer implements Runnable {
 }
 class EchoServerMultithreaded {
     public static final int DEFAULT_PORT = 8088;
-    ConcurrentHashMap<Integer, ChatServer> allClientHandlers;
+    ConcurrentHashMap<String, ChatServer> allClientHandlers;
+
+    void addToClientHandler(String username, ChatServer chatserver){
+        allClientHandlers.put(username,chatserver);
+    }
 
 
     void sendToAll(String msg) {
         allClientHandlers.values().forEach(clientHandler -> {
             clientHandler.sendMessage(msg);
         });
+    }
+
+    //ONLINE#peter,ole
+    boolean sendOnlineUsers() {
+        ChatServer chat;
+        Set<String> allUsers = allClientHandlers.keySet();
+        allClientHandlers.values().forEach(clientHandler -> {
+            clientHandler.sendMessageOnline("ONLINE#HH,Ermin,Daniel" + allUsers);
+        });
+        return false;
     }
 
 
@@ -159,12 +174,10 @@ class EchoServerMultithreaded {
             Socket socket = serverSocket.accept();//Blocking call
             System.out.println("New client connected");
             ChatServer chatServer = new ChatServer(socket, this);
-            allClientHandlers.put(chatServer.getId(),chatServer);
             new Thread(chatServer).start();
         }
 
     }
-
 
     //Call server with arguments like this: 0.0.0.0 8088 logfile.log
     public static void main(String[] args) throws IOException {
@@ -177,11 +190,8 @@ class EchoServerMultithreaded {
             }
         }
         new EchoServerMultithreaded().startServer(port);
-
     }
-
 }
-
 
 
 /*   else {
