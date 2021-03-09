@@ -1,6 +1,7 @@
 package server;
 
 
+
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
@@ -9,11 +10,10 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 
-public class ChatServer implements Runnable {
+ class ClientHandler implements Runnable {
 
-    public static Map<String, String> users;
     public Object sendMessageOnline;
-    private EchoServerMultithreaded echoServerMain;
+    private ChatServer echoServerMain;
     private PrintWriter pw;
     Socket socket;
     //Provides each instance with a unique id. Simulates the unique userid we will need for the chat-server
@@ -24,15 +24,8 @@ public class ChatServer implements Runnable {
         return userName;
     }
 
-    static {
-        users = new HashMap<>();
-        users.put("Ermin", "Ermin");
-        users.put("HH", "HH");
-        users.put("Daniel", "Daniel");
 
-    }
-
-    public ChatServer(Socket socket, EchoServerMultithreaded echoServerMain) {
+    public ClientHandler(Socket socket, ChatServer echoServerMain) {
         this.socket = socket;
         this.id++;
         this.echoServerMain = echoServerMain;
@@ -45,10 +38,10 @@ public class ChatServer implements Runnable {
     }
 
     void sendMessageOnline(String msg){
-        pw.println("" + msg );
+        pw.println("ONLINE" + msg );
     }
 
-        private boolean handleCommand(String message, PrintWriter pw) {
+        private boolean handleCommand(String message, PrintWriter pw)throws IOException {
      //   ArrayList<String> onlineUser = new ArrayList<String>();
             String[] parts = message.split("#");
             System.out.println("Size: " + parts.length);
@@ -66,11 +59,16 @@ public class ChatServer implements Runnable {
                     case "CONNECT":
                        userName = param;
                         echoServerMain.addToClientHandler(userName,this);
-                        if (userName == null) { // if user not found send CLOSE#2 and close connection
-                            userName = "Der findes ikke en bruger ved det navn";
-                        }
-                         echoServerMain.sendOnlineUsers();
 
+                        boolean found = echoServerMain.doesUserExist(userName);
+
+                            if (found ){
+                                echoServerMain.sendOnlineUsers();
+
+                            }else{
+                                pw.println("CLOSE#2");
+                                socket.close();
+                            }
                         break;
                     case "UPPER":
                         pw.println(param.toUpperCase());
@@ -88,11 +86,22 @@ public class ChatServer implements Runnable {
                 String param1 = parts[2];//Værdi efter 2. #-tegne
                 switch (token1) {
                     case "SEND":
-                        String username = users.get(param);
-                        if (username == null) { // if user not found send CLOSE#2 and close connection
-                            username = "Der findes ikke en bruger ved det navn";
-                        }
-                        pw.println(param1);
+
+                        boolean found = echoServerMain.doesUserExist(param);
+
+                        if (found ){
+                            pw.println(param1);
+
+                        }else if(param == "hh"){
+                            pw.println(sendMessageOnline);
+
+
+
+                        }else{
+                        pw.println("CLOSE");
+                        socket.close();
+                    }
+
                         break;
                 }
             }
@@ -130,14 +139,30 @@ public class ChatServer implements Runnable {
         }
     }
 }
-class EchoServerMultithreaded {
+class ChatServer {
     public static final int DEFAULT_PORT = 8088;
-    ConcurrentHashMap<String, ChatServer> allClientHandlers;
+    ConcurrentHashMap<String, ClientHandler> allClientHandlers;
+    public static Map<String, String> users;
+    static {
+        users = new HashMap<>();
+        users.put("Ermin", "Ermin");
+        users.put("HH", "HH");
+        users.put("Daniel", "Daniel");
 
-    void addToClientHandler(String username, ChatServer chatserver){
+    }
+
+    void addToClientHandler(String username, ClientHandler chatserver){
         allClientHandlers.put(username,chatserver);
     }
 
+    boolean doesUserExist(String user){
+        boolean found = false;
+        String u = users.get(user);
+        if(u != null ){
+            found=true;
+        }
+        return found;
+    }
 
     void sendToAll(String msg) {
         allClientHandlers.values().forEach(clientHandler -> {
@@ -147,7 +172,7 @@ class EchoServerMultithreaded {
 
     //ONLINE#peter,ole
     boolean sendOnlineUsers() {
-        ChatServer chat;
+
         Set<String> allUsers = allClientHandlers.keySet();
         allClientHandlers.values().forEach(clientHandler -> {
             clientHandler.sendMessageOnline("ONLINE#HH,Ermin,Daniel" + allUsers);
@@ -173,7 +198,7 @@ class EchoServerMultithreaded {
             System.out.println("Waiting for a client");
             Socket socket = serverSocket.accept();//Blocking call
             System.out.println("New client connected");
-            ChatServer chatServer = new ChatServer(socket, this);
+            ClientHandler chatServer = new ClientHandler(socket, this);
             new Thread(chatServer).start();
         }
 
@@ -189,7 +214,7 @@ class EchoServerMultithreaded {
                 System.out.println("Invalid port number, using default port :" + DEFAULT_PORT);
             }
         }
-        new EchoServerMultithreaded().startServer(port);
+        new ChatServer().startServer(port);
     }
 }
 
