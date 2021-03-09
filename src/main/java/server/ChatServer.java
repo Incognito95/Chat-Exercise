@@ -1,21 +1,31 @@
 package server;
 
 
-import java.awt.*;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.net.InetAddress;
+import java.io.Writer;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.UnknownHostException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Scanner;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
-public class ChatServer {
-    private ServerSocket serverSocket;
+
+public class ChatServer implements Runnable {
+
     public static Map<String, String> users;
+    public Object sendMessageOnline;
+    private EchoServerMultithreaded echoServerMain;
+    private PrintWriter pw;
+    Socket socket;
+    //Provides each instance with a unique id. Simulates the unique userid we will need for the chat-server
+    private static int id = 0;
+    private String userName;
+    private Object PrintWriter;
+
+    public String getUserName() {
+        return userName;
+    }
+
     static {
         users = new HashMap<>();
         users.put("Ermin", "Ermin");
@@ -24,7 +34,24 @@ public class ChatServer {
 
     }
 
-    private boolean handleCommand(String message, PrintWriter pw) {
+    public ChatServer(Socket socket, EchoServerMultithreaded echoServerMain) {
+        this.socket = socket;
+        this.id++;
+        this.echoServerMain = echoServerMain;
+    }
+
+
+    void sendMessage(String msg)
+    {
+        pw.println("MSG_ALL#" + msg);
+    }
+
+    void sendMessageOnline(String msg){
+        pw.println("" + msg );
+    }
+
+    private boolean handleCommand(String message, PrintWriter pw) throws IOException {
+        //   ArrayList<String> onlineUser = new ArrayList<String>();
         String[] parts = message.split("#");
         System.out.println("Size: " + parts.length);
         if (parts.length == 1) {
@@ -37,55 +64,48 @@ public class ChatServer {
             String token = parts[0];//Indeholder eksempelvis CONECT
             String param = parts[1];//Værdi efter #-tegne
 
-            switch(token) {
+            switch (token) {
                 case "CONNECT":
-                    String username = users.get(param);
-                    if (username == null) { // if user not found send CLOSE#2 and close connection
-                        username = "Der findes ikke en bruger ved det navn";
+                    userName = param;
+                    echoServerMain.addToClientHandler(userName,this);
+                    if (userName == null) { // if user not found send CLOSE#2 and close connection
+                        userName = "Der findes ikke en bruger ved det navn";
                     }
-                    pw.println(username);
-                    send(message, pw);
-                    System.out.println("hellooooo");
+                    echoServerMain.sendOnlineUsers();
+
                     break;
                 case "UPPER":
                     pw.println(param.toUpperCase());
                     break;
+                case "ALL":
+                    echoServerMain.sendToAll(param);
+                    break;
+                case "CLOSE":
+                    echoServerMain.discardAllMessages("Sorry too late you can't send anymore messages, closing connection...", socket, pw);
+                break;
 
                 default:
                     throw new IllegalArgumentException("Sent request does not obey the protocal");
             }
+        }else if (parts.length==3) {
+            String token1 = parts[0];//Indeholder eksempelvis CONECT
+            String param = parts[1];//Værdi efter #-tegne
+            String param1 = parts[2];//Værdi efter 2. #-tegne
+            switch (token1) {
+                case "SEND":
+                    String username = users.get(param);
+                    if (username == null) { // if user not found send CLOSE#2 and close connection
+                        username = "Der findes ikke en bruger ved det navn";
+                    }
+                    pw.println(param1);
+                    break;
+            }
         }
-
         return true;
-
     }
 
-
-public void send(String message, PrintWriter pw) {
-    String[] parts = message.split("#");
-    System.out.println("Size: " + parts.length);
-    String send = parts[0];
-    String param = parts[1];//Værdi efter #-tegne
-
-    switch(send) {
-        case "SEND":
-            System.out.println("hej");
-            pw.println(param.toUpperCase());
-            break;
-
-        default:
-            throw new IllegalArgumentException("Sent request does not obey the protocal");
-    }
-}
-
-
-
-
-
-
-
-    private void handleClient(Socket socket) throws IOException {
-        PrintWriter pw = new PrintWriter(socket.getOutputStream(), true); //
+    private void handleClient() throws IOException {
+        pw = new PrintWriter(socket.getOutputStream(), true);
         Scanner scanner = new Scanner(socket.getInputStream());
         pw.println("You are connected, send a string for get it upper cased, send 'stop' to stop the server");
         try {
@@ -102,47 +122,100 @@ public void send(String message, PrintWriter pw) {
         socket.close(); // close connection
 
     }
-
-private void startServer (int port) throws IOException {
-    try {
-        serverSocket = new ServerSocket(port);
-    } catch (IOException e) {
-        e.printStackTrace();
-    }
-    System.out.println("Server started, listening in : "+ port);
-
-    while (true){
-        System.out.println("Waiting for a client");
-        Socket socket = serverSocket.accept();//Blocking call
-        System.out.println("New client connected");
-        handleClient(socket);
+    public int getId() {
+        return id;
     }
 
+    @Override
+    public void run() {
+        try {
+            handleClient();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 }
+class EchoServerMultithreaded {
+    public static final int DEFAULT_PORT = 8088;
+    ConcurrentHashMap<String, ChatServer> allClientHandlers;
 
+    void addToClientHandler(String username, ChatServer chatserver){
+        allClientHandlers.put(username,chatserver);
+    }
+
+
+    void sendToAll(String msg) {
+        allClientHandlers.values().forEach(clientHandler -> {
+            clientHandler.sendMessage(msg);
+        });
+    }
+
+    boolean discardAllMessages(String message, Socket socket, PrintWriter pw) throws IOException {
+        try {
+            String[] parts = message.split("#");
+            if (parts[0].equals("CLOSE")) {
+                pw.println();
+                return false;
+            }
+        } catch (Exception e) {
+            pw.println("Connection is closing...");
+            socket.close(); // close connection
+        }
+        return false;
+    }
+
+
+
+
+    //ONLINE#peter,ole
+    boolean sendOnlineUsers() {
+        ChatServer chat;
+        Set<String> allUsers = allClientHandlers.keySet();
+        allClientHandlers.values().forEach(clientHandler -> {
+            clientHandler.sendMessageOnline("ONLINE#HH,Ermin,Daniel" + allUsers);
+        });
+        return false;
+    }
+
+
+    private void startServer(int port) throws IOException {
+        ServerSocket serverSocket;
+        allClientHandlers = new ConcurrentHashMap<>();
+        serverSocket = new ServerSocket(port);
+        System.out.println("Server started, listening on : " + port);
+
+//            try {
+//                serverSocket = new ServerSocket(port);
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//            }
+//            System.out.println("Server started, listening in : " + port);
+
+        while (true) {
+            System.out.println("Waiting for a client");
+            Socket socket = serverSocket.accept();//Blocking call
+            System.out.println("New client connected");
+            ChatServer chatServer = new ChatServer(socket, this);
+            new Thread(chatServer).start();
+        }
+
+    }
 
     //Call server with arguments like this: 0.0.0.0 8088 logfile.log
     public static void main(String[] args) throws IOException {
-    String ip ="localhost";
-        int port = 8088;
-        String logFile = "log.txt";  //Do we need this
-
-        try {
-            if (args.length == 3) {
-                ip = args[0];
-                port = Integer.parseInt(args[1]);
-                logFile = args[2];
+        int port = DEFAULT_PORT;
+        if (args.length == 1) {
+            try {
+                port = Integer.parseInt(args[0]);
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid port number, using default port :" + DEFAULT_PORT);
             }
-        } catch (NumberFormatException ne) {
-            System.out.println("Illegal inputs provided when starting the server!");
-            return;
         }
-
-        new ChatServer().startServer(port);
+        new EchoServerMultithreaded().startServer(port);
     }
 
-
 }
+
 
 /*   else {
     throw new IllegalArgumentException("Server not provided with the right arguments");
