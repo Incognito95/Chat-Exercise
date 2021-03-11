@@ -33,10 +33,10 @@ public class QuickProtocolTester {
         pw.println("CONNECT#Peter");
         String response = scanner.nextLine();
         System.out.println(response);
-//        pw.println("SEND#*#hej");
-//        response=scanner.nextLine();
-//        System.out.println(response.equals("MESSAGE#Peter#hej"));
-//        System.out.println(response);
+        pw.println("SEND#*#hej");
+        response=scanner.nextLine();
+        System.out.println(response.equals("MESSAGE#Peter#hej"));
+        System.out.println(response);
         pw.println("SEND#Peter#xxxx");
         response=scanner.nextLine();
         System.out.println(response.equals("MESSAGE#Peter#xxxx"));

@@ -37,7 +37,7 @@ class ClientHandler implements Runnable {
 
 
     void sendMessage(String msg){
-        pw.println("MESSAGE#" + msg );
+        pw.println(msg );
     }
 
     void sendMessageToThisClient(String msg){
@@ -131,7 +131,6 @@ class ClientHandler implements Runnable {
             Scanner scanner = new Scanner(socket.getInputStream());
             //pw.println("You are connected, send a string for get it upper cased, send 'stop' to stop the server");
 
-
             try {
                 String message = ""; // scanner.nextLine(); blocking call
                 boolean keepRunning = true;
@@ -208,7 +207,7 @@ class ChatServer {
     void sendToAll(String msg) {
         String messageString = "MESSAGE#";
         allClientHandlers.values().forEach(clientHandler -> {
-            clientHandler.sendMessage(msg);
+            clientHandler.sendMessage("MESSAGE#"+msg);
         });
     }
 

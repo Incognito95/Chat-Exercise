@@ -15,7 +15,7 @@ public class ChatClient {
         socket = new Socket(address, port);
         pw = new PrintWriter(socket.getOutputStream(), true);
         scanner = new Scanner(socket.getInputStream());
-        System.out.println(scanner.nextLine());
+
 
         Scanner keyboard = new Scanner(System.in);
         boolean keepRunning = true;
