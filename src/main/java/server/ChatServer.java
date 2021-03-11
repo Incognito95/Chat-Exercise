@@ -8,13 +8,15 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 
- class ClientHandler implements Runnable {
-
+class ClientHandler implements Runnable {
+    public int closeStatus;
     public Object sendMessageOnline;
     private ChatServer echoServerMain;
     private PrintWriter pw;
+    private String tmp;
     Socket socket;
     //Provides each instance with a unique id. Simulates the unique userid we will need for the chat-server
     private static int id = 0;
@@ -29,20 +31,37 @@ import java.util.concurrent.ConcurrentHashMap;
         this.socket = socket;
         this.id++;
         this.echoServerMain = echoServerMain;
+
     }
 
 
-    void sendMessage(String msg)
-    {
-        pw.println("MSG_ALL#" + msg);
+
+    void sendMessage(String msg){
+        pw.println("MESSAGE#" + msg );
     }
 
-    void sendMessageOnline(String msg){
-        pw.println("ONLINE" + msg );
+    void sendMessageToThisClient(String msg){
+        pw.println(msg);
+    }
+
+    private boolean handleConnectCommand(String msg, PrintWriter pw,Scanner scanner){
+        String[] parts = msg.split("#");
+        if(parts.length != 2 || !parts[0].equals("CONNECT")){
+            closeStatus = 1;
+            throw new IllegalArgumentException("Sent request does not obey protocol");
+        }
+        userName = parts[1];
+        boolean found = echoServerMain.doesUserExist(userName);
+        if(found) {
+            echoServerMain.addToClientHandler(userName,this);
+        } else{
+            closeStatus = 2;
+            throw new IllegalArgumentException();
+        }
+        return true;
     }
 
         private boolean handleCommand(String message, PrintWriter pw)throws IOException {
-     //   ArrayList<String> onlineUser = new ArrayList<String>();
             String[] parts = message.split("#");
             System.out.println("Size: " + parts.length);
             if (parts.length == 1) {
@@ -51,35 +70,29 @@ import java.util.concurrent.ConcurrentHashMap;
                     return false;
                 }
                 throw new IllegalArgumentException("Sent request does not obey the protocol");
-            } else if (parts.length == 2) {
-                String token = parts[0];//Indeholder eksempelvis CONECT
-                String param = parts[1];//Værdi efter #-tegne
-
-                switch (token) {
-                    case "CONNECT":
-                       userName = param;
-                        echoServerMain.addToClientHandler(userName,this);
-
-                        boolean found = echoServerMain.doesUserExist(userName);
-
-                            if (found ){
-                                echoServerMain.sendOnlineUsers();
-
-                            }else{
-                                pw.println("CLOSE#2");
-                                socket.close();
-                            }
-                        break;
-                    case "UPPER":
-                        pw.println(param.toUpperCase());
-                        break;
-                    case "ALL":
-                        echoServerMain.sendToAll(param);
-                        break;
-
-                    default:
-                        throw new IllegalArgumentException("Sent request does not obey the protocal");
-                }
+//            } else if (parts.length == 2) {
+//                String token = parts[0];//Indeholder eksempelvis CONECT
+//                String param = parts[1];//Værdi efter #-tegne
+////
+////                switch (token) {
+////                    case "CONNECT":
+////                       userName = param;
+////                        echoServerMain.addToClientHandler(userName,this);
+////
+////                        boolean found = echoServerMain.doesUserExist(userName);
+////
+////                            if (found ){
+////                                echoServerMain.sendOnlineUsers();
+////
+////                            }else{
+////                                pw.println("CLOSE#2");
+////                                socket.close();
+////                            }
+////                        break;
+////
+////                    default:
+////                        throw new IllegalArgumentException("Sent request does not obey the protocal");
+////                }
             }else if (parts.length==3) {
                 String token1 = parts[0];//Indeholder eksempelvis CONECT
                 String param = parts[1];//Værdi efter #-tegne
@@ -87,45 +100,65 @@ import java.util.concurrent.ConcurrentHashMap;
                 switch (token1) {
                     case "SEND":
 
-                        boolean found = echoServerMain.doesUserExist(param);
-
-                        if (found ){
-                            pw.println(param1);
-
-                        }else if(param == "hh"){
-                            pw.println(sendMessageOnline);
 
 
+                        if(param.equals("*")){
+                            echoServerMain.sendToAll(userName+ "#"+param1);
+                    }else{
+                            String [] partsh = param.split(",");
+                            if(partsh.length == 1){
+                                echoServerMain.sendToSingleClient(userName + "," + param + "," + param1);
 
-                        }else{
-                        pw.println("CLOSE");
-                        socket.close();
-                    }
 
+                                //send til en person
+
+                            }else{
+                                //send til flere personer
+                                System.out.println("Am i here?");
+                              // echoServerMain.sendToClients(param1);
+
+                            }
+                        }
                         break;
                 }
             }
             return true;
         }
 
+
         private void handleClient() throws IOException {
             pw = new PrintWriter(socket.getOutputStream(), true);
             Scanner scanner = new Scanner(socket.getInputStream());
-            pw.println("You are connected, send a string for get it upper cased, send 'stop' to stop the server");
+            //pw.println("You are connected, send a string for get it upper cased, send 'stop' to stop the server");
+
+
             try {
                 String message = ""; // scanner.nextLine(); blocking call
                 boolean keepRunning = true;
+                //connect skal kun sendes en gang
+                String connectMsg = scanner.nextLine();
+                handleConnectCommand(connectMsg,pw,scanner);
                 while (keepRunning) {
                     message = scanner.nextLine();
                     keepRunning = handleCommand(message, pw);
                 }
-            } catch (Exception e) {
+
+            } catch (IllegalArgumentException e){
+                e.printStackTrace();
+            }finally {
+                pw.println("CLOSE#"+closeStatus);
+                socket.close();
+            }
+            /*
+            catch (Exception e) {
                 System.out.println("UPPS" + e.getMessage());
             }
             pw.println("Connection is closing...");
             socket.close(); // close connection
-
+             */
         }
+
+
     public int getId() {
         return id;
     }
@@ -148,12 +181,20 @@ class ChatServer {
         users.put("Ermin", "Ermin");
         users.put("HH", "HH");
         users.put("Daniel", "Daniel");
+        users.put("Peter", "Peter");
 
     }
 
-    void addToClientHandler(String username, ClientHandler chatserver){
-        allClientHandlers.put(username,chatserver);
+
+    public ConcurrentHashMap<String, ClientHandler> getAllClientHandlers() {
+        return allClientHandlers;
     }
+
+    void addToClientHandler(String username, ClientHandler clientHandlerr){
+        allClientHandlers.put(username,clientHandlerr);
+        sendOnlineUsers();
+    }
+
 
     boolean doesUserExist(String user){
         boolean found = false;
@@ -165,21 +206,39 @@ class ChatServer {
     }
 
     void sendToAll(String msg) {
+        String messageString = "MESSAGE#";
         allClientHandlers.values().forEach(clientHandler -> {
             clientHandler.sendMessage(msg);
         });
     }
 
+    void sendToSingleClient(String msg) throws IOException{
+        String messageString = "MESSAGE#";
+        String [] parts =msg.split(",");
+        for (ClientHandler tmp:allClientHandlers.values()){
+            for (int i =0; i < parts.length; i++){
+                if (tmp.getUserName().equals(parts[i])){
+                    tmp.sendMessageToThisClient(messageString + parts[0] + "#" + parts[parts.length -1]);
+                }else{
+                    throw new IllegalArgumentException("This user does not exist, or is no longer online");
+                }
+            }
+        }
+    }
+
     //ONLINE#peter,ole
     boolean sendOnlineUsers() {
-
         Set<String> allUsers = allClientHandlers.keySet();
+      final String usersCommaSeparated = allUsers.stream().collect(Collectors.joining(","));
         allClientHandlers.values().forEach(clientHandler -> {
-            clientHandler.sendMessageOnline("ONLINE#HH,Ermin,Daniel" + allUsers);
+            System.out.println("xxx");
+            clientHandler.sendMessage("ONLINE#" + usersCommaSeparated);
         });
         return false;
     }
+    void sendToClients(String msg){
 
+    }
 
     private void startServer(int port) throws IOException {
         ServerSocket serverSocket;
@@ -187,12 +246,6 @@ class ChatServer {
         serverSocket = new ServerSocket(port);
         System.out.println("Server started, listening on : " + port);
 
-//            try {
-//                serverSocket = new ServerSocket(port);
-//            } catch (IOException e) {
-//                e.printStackTrace();
-//            }
-//            System.out.println("Server started, listening in : " + port);
 
         while (true) {
             System.out.println("Waiting for a client");
@@ -217,8 +270,3 @@ class ChatServer {
         new ChatServer().startServer(port);
     }
 }
-
-
-/*   else {
-    throw new IllegalArgumentException("Server not provided with the right arguments");
-} */
